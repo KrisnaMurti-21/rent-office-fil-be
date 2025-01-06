@@ -10,6 +10,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
@@ -58,6 +59,43 @@ class BookingTransactionResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')
+                    ->action(function (BookingTransaction $record) {
+                        $record->is_paid = true;
+                        $record->save();
+
+                        Notification::make()
+                            ->title('Booking Approved')
+                            ->success()
+                            ->body('The booking has been successfully approved.')
+                            ->send();
+
+                        $sid = getenv("TWILIO_ACCOUNT_SID");
+                        $token = getenv("TWILIO_ACCOUNT_TOKEN");
+                        $twilio = new \Twilio\Rest\Client($sid, $token);
+
+                        $messageBody = "Hi {$record->name}, pemesanan anda dengan kode {$record->booking_trx_id} sudah terbayar penuh.\n\n";
+                        $messageBody .= "Silahkan datang kepada lokasi kantor {$record->officeSpace->name} untuk memulai menggunakan ruangan tersebut.\n\n";
+                        $messageBody .= "Jika anda memiliki pertanyaan lebih lanjut, silahkan hubungi kami melalui nomor 0812-3456-7890.\n\n";
+                        $no_telephone = $record->phone_number;
+                        if (strpos($no_telephone, '0') === 0) {
+                            // Ganti awalan '0' dengan '+62'
+                            $no_telephone = '+62' . substr($no_telephone, 1);
+                        }
+                        $twilio->messages->create(
+                            "whatsapp:" . $no_telephone,
+                            [
+                                "body" => $messageBody,
+                                "from" => "whatsapp:" . getenv("TWILIO_PHONE_NUMBER"),
+                            ]
+                        );
+                    })
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn(BookingTransaction $record) => !$record->is_paid)
+
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
